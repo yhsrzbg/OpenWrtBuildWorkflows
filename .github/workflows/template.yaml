@@ -21,7 +21,7 @@ on:
       force-build:
         description: "Build new firmware anyway"
         required: false
-        default: "true"
+        default: "false"
       ssh:
         description: "SSH connection to Actions"
         required: false
@@ -37,29 +37,28 @@ env:
   REPO_NAME: example-name
   REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x
   REPO_BRANCH: openwrt-21.02
-  BUILD_DEPENDS:  "ack antlr3 aria2 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 \
-                   ccache clang cmake cpio curl device-tree-compiler fastjar file flex gawk gettext gcc-multilib \
-                   g++ g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev \
-                   libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev \
-                   libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full \
-                   patch pkgconf python2.7 python3 python3-distutils python3-pip libpython3-dev qemu-utils rsync \
-                   scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd \
-                   zlib1g-dev"
+  BUILD_DEPENDS:  "ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+                   bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+                   git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+                   libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+                   libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 \
+                   python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
+                   uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev clang file nano aria2"
   # CONFIG_FILE is the name of your own config files for compiling, you should upload these files into the root 
   # directory of your workflow repo.
   CONFIG_FILE: example.config
   # CUSTOM_SCRIPT_1 is the name of extra bash script you want to execute before feeds update&install.
   # CUSTOM_SCRIPT_2 is the name of extra bash script you want to execute after feeds update&install.
-  # You can modify the initial settings of your firmware through these two scripts. If this is what you 
-  # need, please upload your scripts to the root directory of your workflow repo.
+  # You can modify the initial settings of your firmware through these two scripts. If this is what you need,
+  # please upload your scripts to the root directory of your workflow repo.
   CUSTOM_SCRIPT_1: example-custom-script-1.sh
   CUSTOM_SCRIPT_2: example-custom-script-2.sh
-  # The following option determine whether to upload all compilation products to workflow artifacts.
+  # STORE_PRODUCTS determine whether to upload all compilation products to workflow artifacts.
+  # Not only firmwires, all compiled packages will be here, including compiled but not solidified into firmware.
   STORE_PRODUCTS: false
-  # The following option determine whether to upload firmwares to workflow artifacts.
+  # STORE_FIRMWARE determine whether to upload firmwares to workflow artifacts.
   STORE_FIRMWARE: true
-  # The following is the option of where the firmware needs to be transfered. 
-  # To enable the corresponding target, you need to change false to true.
+  # The following are options of where the firmware needs to be transfered. 
   COWTRANSFER_FIRMWARE: false
   WETRANSFER_FIRMWARE: false
   RELEASE_FIRMWARE: false
@@ -105,12 +104,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@main
 
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
       - name: Initialization environment
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet/ /usr/local/lib/android/ /opt/ghc/
-          curl -s https://build-scripts.immortalwrt.eu.org/init_build_environment.sh | sudo bash
+          sudo rm -rf /etc/apt/sources.list.d/*
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install $BUILD_DEPENDS
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
           sudo timedatectl set-timezone $TIME_ZONE
@@ -187,7 +198,6 @@ jobs:
 
       - name: Organize firmware-related files
         id: organize-files
-        if: env.STORE_FIRMWARE == 'true' && !cancelled()
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages/
@@ -196,7 +206,7 @@ jobs:
 
       - name: Upload firmware directory
         uses: actions/upload-artifact@main
-        if: steps.organize-files.outputs.status == 'success' && !cancelled()
+        if: steps.organize-files.outputs.status == 'success' && env.STORE_FIRMWARE == 'true' && !cancelled()
         with:
           name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
